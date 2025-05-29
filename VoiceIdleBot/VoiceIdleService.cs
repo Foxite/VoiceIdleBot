@@ -12,6 +12,7 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 	private readonly ILogger<VoiceIdleService> _logger;
 
 	private readonly DiscordSocketClient _discordClient;
+	private readonly SemaphoreSlim _playLock = new(1, 1);
 	private IAudioClient? _audioClient;
 
 	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, ILogger<DiscordSocketClient> discordLogger, ILogger<VoiceIdleService> logger) {
@@ -61,11 +62,24 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 	private async Task OnUserJoin(IAudioClient audioClient) {
 		_logger.LogInformation("Playing join sound");
 		try {
+			await PlaySound(audioClient);
+		} catch (Exception e) {
+			_logger.LogError(e, "Failed to play sound on user join");
+		}
+	}
+
+	private async Task PlaySound(IAudioClient audioClient) {
+		if (!await _playLock.WaitAsync(TimeSpan.FromMilliseconds(1))) {
+			_logger.LogInformation("Already playing sound; not playing");
+			return;
+		}
+
+		try {
 			await using AudioOutStream soundOut = audioClient.CreatePCMStream(AudioApplication.Music);
 			await using FileStream soundIn = File.OpenRead(_discordOptions.Value.SoundPath);
 			await soundIn.CopyToAsync(soundOut);
-		} catch (Exception e) {
-			_logger.LogError(e, "Failed to play sound on user join");
+		} finally {
+			_playLock.Release();
 		}
 	}
 
@@ -81,6 +95,8 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 	}
 	
 	public async ValueTask DisposeAsync() {
+		_playLock.Dispose();
+		
 		try {
 			if (_audioClient != null) {
 				await _audioClient.StopAsync();
