@@ -3,8 +3,8 @@ name: Build and push Docker image
 on:
   push:
     paths:
-      - back-end/**
-      - .github/workflows/docker-backend.yml
+      - VoiceIdleBot/**
+      - .github/workflows/docker.yml
 
 env:
   REGISTRY: ghcr.io
