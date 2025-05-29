@@ -12,7 +12,7 @@ RUN dotnet publish "VoiceIdleBot.csproj" -c $BUILD_CONFIGURATION -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/runtime:9.0 AS final
 
-#RUN apt-get update && apt-get install libopus0
+#RUN apt-get update && apt-get install libopus0 libsodium23
 
 USER $APP_UID
 WORKDIR /app

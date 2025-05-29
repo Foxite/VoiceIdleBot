@@ -1,8 +1,8 @@
-using DSharpPlus;
-using DSharpPlus.Entities;
-using DSharpPlus.VoiceNext;
-using DSharpPlus.VoiceNext.EventArgs;
+using Discord;
+using Discord.Audio;
+using Discord.WebSocket;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace VoiceIdleBot;
@@ -10,65 +10,78 @@ namespace VoiceIdleBot;
 public class VoiceIdleService : IHostedService, IAsyncDisposable {
 	private readonly IOptions<DiscordOptions> _discordOptions;
 	
-	private readonly DiscordClient _discordClient;
-	private VoiceNextConnection? _voiceConnection;
+	private readonly DiscordSocketClient _discordClient;
+	private IAudioClient? _audioClient;
 
-	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, DiscordConfiguration discordConfiguration) {
+	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, ILogger<DiscordSocketClient> discordLogger) {
 		_discordOptions = discordOptions;
 
-		_discordClient = new DiscordClient(discordConfiguration);
+		_discordClient = new DiscordSocketClient(new DiscordSocketConfig() {
+			GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildVoiceStates,
+		});
+
+		_discordClient.Log += message => {
+			discordLogger.Log(message.Severity switch {
+				LogSeverity.Critical => LogLevel.Critical,
+				LogSeverity.Error    => LogLevel.Error,
+				LogSeverity.Warning  => LogLevel.Warning,
+				LogSeverity.Info     => LogLevel.Information,
+				LogSeverity.Debug    => LogLevel.Debug,
+				LogSeverity.Verbose  => LogLevel.Trace,
+			}, message.Exception, "[{Source}] {Message}", message.Source, message.Message);
+			return Task.CompletedTask;
+		};
 	}
 
 	public async Task StartAsync(CancellationToken cancellationToken) {
-		_discordClient.UseVoiceNext(new VoiceNextConfiguration() {
-			EnableIncoming = false,
-		});
-		await _discordClient.ConnectAsync();
-
-		var guild = await _discordClient.GetGuildAsync(_discordOptions.Value.GuildId);
+		var readyTcs = new TaskCompletionSource();
+		_discordClient.Ready += () => {
+			readyTcs.SetResult();
+			return Task.CompletedTask;
+		};
+		await _discordClient.LoginAsync(TokenType.Bot, _discordOptions.Value.Token);
+		await _discordClient.StartAsync();
+		await readyTcs.Task;
 		
-		DiscordChannel channel = guild.GetChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Specified channel with ID {_discordOptions.Value.ChannelId} is not found");
+		var guild = _discordClient.GetGuild(_discordOptions.Value.GuildId);
 
-		Console.WriteLine("YYY");
-		_voiceConnection = await channel.ConnectAsync();
-		Console.WriteLine("ZZZ");
+		var channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId);
+		_audioClient = await channel.ConnectAsync();
 
-		_voiceConnection.UserJoined += OnUserJoin;
-		
-		Console.WriteLine("AAA");
+		_discordClient.UserVoiceStateUpdated += (user, oldState, newState) => {
+			if (oldState.VoiceChannel?.Id != _discordOptions.Value.ChannelId && newState.VoiceChannel?.Id == _discordOptions.Value.ChannelId) {
+				return OnUserJoin();
+			} else {
+				return Task.CompletedTask;
+			}
+		};
 	}
 	
-	private Task OnUserJoin(VoiceNextConnection sender, VoiceUserJoinEventArgs args) {
+	private Task OnUserJoin() {
 		Console.WriteLine("BBB");
 		// TODO play sound
 		return Task.CompletedTask;
 	}
 
-	public Task StopAsync(CancellationToken cancellationToken) {
-		Console.WriteLine("CCC");
+	public async Task StopAsync(CancellationToken cancellationToken) {
 		try {
-			Console.WriteLine("DDD");
-			_voiceConnection?.Disconnect();
-			Console.WriteLine("EEE");
+			if (_audioClient != null) {
+				await _audioClient.StopAsync();
+			}
+		} finally {
+			_audioClient?.Dispose();
+			_audioClient = null;
 		}
-		finally {
-			Console.WriteLine("FFF");
-			_voiceConnection?.Dispose();
-			Console.WriteLine("GGG");
-			_voiceConnection = null;
-			Console.WriteLine("HHH");
-		}
-		
-		Console.WriteLine("III");
-		
-		return Task.CompletedTask;
 	}
 	
 	public async ValueTask DisposeAsync() {
-		Console.WriteLine("JJJ");
-		await _discordClient.DisconnectAsync();
-		Console.WriteLine("KKK");
-		_discordClient.Dispose();
-		Console.WriteLine("LLL");
+		try {
+			if (_audioClient != null) {
+				await _audioClient.StopAsync();
+			}
+		} finally {
+			_audioClient?.Dispose();
+			_audioClient = null;
+		}
 	}
 }
