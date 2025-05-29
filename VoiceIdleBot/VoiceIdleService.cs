@@ -9,12 +9,14 @@ namespace VoiceIdleBot;
 
 public class VoiceIdleService : IHostedService, IAsyncDisposable {
 	private readonly IOptions<DiscordOptions> _discordOptions;
-	
+	private readonly ILogger<VoiceIdleService> _logger;
+
 	private readonly DiscordSocketClient _discordClient;
 	private IAudioClient? _audioClient;
 
-	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, ILogger<DiscordSocketClient> discordLogger) {
+	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, ILogger<DiscordSocketClient> discordLogger, ILogger<VoiceIdleService> logger) {
 		_discordOptions = discordOptions;
+		_logger = logger;
 
 		_discordClient = new DiscordSocketClient(new DiscordSocketConfig() {
 			GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildVoiceStates,
@@ -43,24 +45,28 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 		await _discordClient.StartAsync();
 		await readyTcs.Task;
 		
-		var guild = _discordClient.GetGuild(_discordOptions.Value.GuildId);
+		SocketGuild guild = _discordClient.GetGuild(_discordOptions.Value.GuildId) ?? throw new Exception($"Guild with ID {_discordOptions.Value.GuildId} is not found");
 
-		var channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId);
+		SocketVoiceChannel channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Channel with ID {_discordOptions.Value.ChannelId} is not found");
 		_audioClient = await channel.ConnectAsync();
 
 		_discordClient.UserVoiceStateUpdated += (user, oldState, newState) => {
 			if (oldState.VoiceChannel?.Id != _discordOptions.Value.ChannelId && newState.VoiceChannel?.Id == _discordOptions.Value.ChannelId) {
-				return OnUserJoin();
-			} else {
-				return Task.CompletedTask;
+				_ = OnUserJoin(_audioClient);
 			}
+			return Task.CompletedTask;
 		};
 	}
 	
-	private Task OnUserJoin() {
-		Console.WriteLine("BBB");
-		// TODO play sound
-		return Task.CompletedTask;
+	private async Task OnUserJoin(IAudioClient audioClient) {
+		_logger.LogInformation("Playing join sound");
+		try {
+			await using AudioOutStream soundOut = audioClient.CreatePCMStream(AudioApplication.Music);
+			await using FileStream soundIn = File.OpenRead(_discordOptions.Value.SoundPath);
+			await soundIn.CopyToAsync(soundOut);
+		} catch (Exception e) {
+			_logger.LogError(e, "Failed to play sound on user join");
+		}
 	}
 
 	public async Task StopAsync(CancellationToken cancellationToken) {
