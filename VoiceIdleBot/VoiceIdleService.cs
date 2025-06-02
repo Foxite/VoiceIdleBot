@@ -45,20 +45,26 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 		await _discordClient.LoginAsync(TokenType.Bot, _discordOptions.Value.Token);
 		await _discordClient.StartAsync();
 		await readyTcs.Task;
-		
-		SocketGuild guild = _discordClient.GetGuild(_discordOptions.Value.GuildId) ?? throw new Exception($"Guild with ID {_discordOptions.Value.GuildId} is not found");
 
-		SocketVoiceChannel channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Channel with ID {_discordOptions.Value.ChannelId} is not found");
-		_audioClient = await channel.ConnectAsync();
+		_discordClient.Connected += ConnectAudio;
+		await ConnectAudio();
 
 		_discordClient.UserVoiceStateUpdated += (user, oldState, newState) => {
 			if (oldState.VoiceChannel?.Id != _discordOptions.Value.ChannelId && newState.VoiceChannel?.Id == _discordOptions.Value.ChannelId) {
+				// _audioClient is not supposed to be null at this point, if it is when well fuck
 				_ = OnUserJoin(_audioClient);
 			}
 			return Task.CompletedTask;
 		};
 	}
 	
+	private async Task ConnectAudio() {
+		SocketGuild guild = _discordClient.GetGuild(_discordOptions.Value.GuildId) ?? throw new Exception($"Guild with ID {_discordOptions.Value.GuildId} is not found");
+
+		SocketVoiceChannel channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Channel with ID {_discordOptions.Value.ChannelId} is not found");
+		_audioClient = await channel.ConnectAsync();
+	}
+
 	private async Task OnUserJoin(IAudioClient audioClient) {
 		_logger.LogInformation("Playing join sound");
 		try {
