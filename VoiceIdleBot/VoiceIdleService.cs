@@ -62,7 +62,9 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 		SocketGuild guild = _discordClient.GetGuild(_discordOptions.Value.GuildId) ?? throw new Exception($"Guild with ID {_discordOptions.Value.GuildId} is not found");
 
 		SocketVoiceChannel channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Channel with ID {_discordOptions.Value.ChannelId} is not found");
+
 		_audioClient = await channel.ConnectAsync();
+		await channel.SetStatusAsync(_discordOptions.Value.Status);
 	}
 
 	private async Task OnUserJoin(IAudioClient audioClient) {
