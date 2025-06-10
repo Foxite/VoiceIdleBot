@@ -14,5 +14,7 @@ builder.Services.Configure<DiscordOptions>(discordConfigSection);
 
 builder.Services.AddHostedService<VoiceIdleService>();
 
+builder.Services.AddSingleton<ChannelStatusService>();
+
 IHost app = builder.Build();
 await app.RunAsync();

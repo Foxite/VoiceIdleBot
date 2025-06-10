@@ -10,14 +10,16 @@ namespace VoiceIdleBot;
 public class VoiceIdleService : IHostedService, IAsyncDisposable {
 	private readonly IOptions<DiscordOptions> _discordOptions;
 	private readonly ILogger<VoiceIdleService> _logger;
+	private readonly ChannelStatusService _channelStatusService;
 
 	private readonly DiscordSocketClient _discordClient;
 	private readonly SemaphoreSlim _playLock = new(1, 1);
 	private IAudioClient? _audioClient;
 
-	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, ILogger<DiscordSocketClient> discordLogger, ILogger<VoiceIdleService> logger) {
+	public VoiceIdleService(IOptions<DiscordOptions> discordOptions, ILogger<DiscordSocketClient> discordLogger, ILogger<VoiceIdleService> logger, ChannelStatusService channelStatusService) {
 		_discordOptions = discordOptions;
 		_logger = logger;
+		_channelStatusService = channelStatusService;
 
 		_discordClient = new DiscordSocketClient(new DiscordSocketConfig() {
 			GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildVoiceStates,
@@ -56,6 +58,14 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 			}
 			return Task.CompletedTask;
 		};
+
+		_discordClient.VoiceChannelStatusUpdated += (channel, _, newStatus) => {
+			if (channel.Id != _discordOptions.Value.ChannelId) {
+				return Task.CompletedTask;
+			}
+
+			return _channelStatusService.SaveStatus(newStatus);
+		};
 	}
 	
 	private async Task ConnectAudio() {
@@ -64,7 +74,7 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 		SocketVoiceChannel channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Channel with ID {_discordOptions.Value.ChannelId} is not found");
 
 		_audioClient = await channel.ConnectAsync();
-		await channel.SetStatusAsync(_discordOptions.Value.Status);
+		await channel.SetStatusAsync(await _channelStatusService.GetStatus());
 	}
 
 	private async Task OnUserJoin(IAudioClient audioClient) {
