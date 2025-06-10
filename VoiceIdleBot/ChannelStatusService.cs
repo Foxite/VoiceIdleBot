@@ -10,10 +10,14 @@ public class ChannelStatusService {
 	}
 
 	public async Task<string> GetStatus() {
-		string status = _discordOptions.Value.Status;
+		string status = "";
 		try {
 			status = await File.ReadAllTextAsync(_discordOptions.Value.StatusFile);
 		} catch (FileNotFoundException) {}
+
+		if (string.IsNullOrWhiteSpace(status)) {
+			status = _discordOptions.Value.Status;
+		}
 		
 		return status;
 	}
