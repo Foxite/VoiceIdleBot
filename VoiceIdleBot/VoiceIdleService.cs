@@ -55,7 +55,7 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 		await ConnectAudio();
 
 		_discordClient.UserVoiceStateUpdated += (user, oldState, newState) => {
-			if (oldState.VoiceChannel?.Id != _discordOptions.Value.ChannelId && newState.VoiceChannel?.Id == _discordOptions.Value.ChannelId) {
+			if (oldState.VoiceChannel?.Id != _discordOptions.Value.ChannelId && newState.VoiceChannel?.Id == _discordOptions.Value.ChannelId && user.Id != _discordClient.CurrentUser.Id) {
 				// _audioClient is not supposed to be null at this point, if it is when well fuck
 				_ = OnUserJoin(_audioClient);
 			}
