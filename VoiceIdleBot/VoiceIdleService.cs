@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Win32.SafeHandles;
 
 namespace VoiceIdleBot;
 
@@ -77,7 +78,16 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 
 			SocketVoiceChannel channel = guild.GetVoiceChannel(_discordOptions.Value.ChannelId) ?? throw new Exception($"Channel with ID {_discordOptions.Value.ChannelId} is not found");
 
-			_audioClient = await channel.ConnectAsync();
+			bool retry;
+			do {
+				try {
+					_audioClient = await channel.ConnectAsync();
+					retry = false;
+				} catch (TimeoutException) { // ye idk either
+					retry = true;
+				}
+			} while (retry);
+			
 			await channel.SetStatusAsync(await _channelStatusService.GetStatus());
 		} catch (Exception e) {
 			_logger.LogCritical(e, "Exception caught in ConnectAudio");
