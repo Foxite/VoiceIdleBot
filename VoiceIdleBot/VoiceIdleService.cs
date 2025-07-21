@@ -82,15 +82,13 @@ public class VoiceIdleService : IHostedService, IAsyncDisposable {
 			do {
 				try {
 					_audioClient = await channel.ConnectAsync();
-
+					
 					_audioClient.Disconnected += async (ex) => {
 						await ConnectAudio();
 					};
-
+					
 					retry = false;
 				} catch (TimeoutException) { // ye idk either
-					retry = true;
-				} catch (TaskCanceledException) { // still no clue
 					retry = true;
 				}
 			} while (retry);
