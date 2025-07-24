@@ -1,4 +1,4 @@
-name: Build and push Docker image
+name: Build bot
 
 on:
   push:
@@ -22,6 +22,8 @@ jobs:
       packages: write
       attestations: write
       id-token: write
+    outputs:
+      images: ${{ steps.meta.outputs.tags }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,17 +53,22 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Generate artifact attestation
+        if: false # re-enable when repo becomes public
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
+  trigger-update:
+    runs-on: ubuntu-latest
+    needs: build-and-push-image
+    steps:
       - name: Trigger update
         uses: Foxite/trigger-update@v1.0
         with:
           keyId: ${{ env.GLUE_KEY_ID }}
           algorithm: ${{ env.GLUE_KEY_ALG }}
-          images: ${{ steps.meta.outputs.tags }}
+          images: ${{ needs.build-and-push-image.outputs.images }}
           glueUrl: ${{ secrets.GLUE_URL }}
           privateKey: ${{ secrets.GLUE_KEY }}
